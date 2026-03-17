@@ -772,6 +772,23 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
                 elif item["type"] == "conv":
                     r = score_conversational_test(item["test"], rubric.get("conversational", DEFAULT_RUBRIC["conversational"]))
                     st.session_state["eval_partial"]["conv_results"].append(r)
+
+                _log = st.session_state.setdefault("eval_console_log", [])
+                _idx = st.session_state.get("eval_progress_idx", 0) + 1
+                _total = st.session_state.get("eval_total_count", 1)
+                _q = item["test"]["question"][:55]
+                if item["type"] == "sql_output":
+                    _status = "PASS" if r["passed"] else "FAIL"
+                    _detail = r.get("accuracy_detail") or r.get("error", "")
+                    _log.append(f"[{_idx:>3}/{_total}] SQL Output  #{r['id']}  \"{_q}\"  →  {_status}  {_detail[:55]}")
+                elif item["type"] == "sql_perf":
+                    _status = "PASS" if r["passed"] else "FAIL"
+                    _detail = f"{r['elapsed_total_ms']}ms, {r['actual_row_count']} rows" if r["executed"] else r.get("error", "")
+                    _log.append(f"[{_idx:>3}/{_total}] SQL Perf    #{r['id']}  \"{_q}\"  →  {_status}  {_detail[:55]}")
+                elif item["type"] == "conv":
+                    _status = "PASS" if r["passed"] else "FAIL"
+                    _detail = f"score={r['weighted_score']:.3f}"
+                    _log.append(f"[{_idx:>3}/{_total}] Conv        #{r['id']}  \"{_q}\"  →  {_status}  {_detail}")
             except Exception as e:
                 st.session_state["eval_partial"].setdefault("errors", []).append(str(e))
             st.session_state["eval_progress_idx"] = st.session_state.get("eval_progress_idx", 0) + 1
@@ -823,6 +840,7 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
             st.session_state["eval_stop"]         = False
             st.session_state["eval_progress_idx"] = 0
             st.session_state["eval_total_count"]  = len(queue)
+            st.session_state["eval_console_log"]  = []
             st.rerun()
 
     # Progress bar while running
@@ -830,7 +848,13 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
         frac = min(progress_idx / max(total_count, 1), 1.0)
         queue = st.session_state.get("eval_queue", [])
         next_q = queue[0]["test"]["question"][:70] if queue else "finalising…"
-        st.progress(frac, text=f"Test {progress_idx}/{total_count} — next: {next_q}")
+        st.progress(frac, text=f"Running {progress_idx}/{total_count} — next: {next_q}")
+
+    # Live console (expanded while running, collapsed when done)
+    console_log = st.session_state.get("eval_console_log", [])
+    if console_log or running:
+        with st.expander("Test Console", expanded=running):
+            st.code("\n".join(console_log) if console_log else "Starting…", language=None)
 
     st.divider()
 
