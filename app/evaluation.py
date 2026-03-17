@@ -3,6 +3,7 @@ Evaluation framework for the Sales Chatbot.
 Provides test case management, scoring, and results display.
 """
 import json
+import re
 import time
 import sys
 from pathlib import Path
@@ -22,6 +23,34 @@ CONV_PASS_THRESHOLD = 0.6   # weighted score >= this → pass
 
 
 # ── Data Layer ────────────────────────────────────────────────────────────────
+
+def extract_perf_json(raw_str: str) -> dict | None:
+    """Parse the performance metrics JSON blob from a Shahzad Work sheet cell."""
+    raw = str(raw_str).replace("=== text_to_sql: Performance Metrics (full) ===\n", "").strip()
+    # Fix ,M12 artifact (Excel named-range remnant): replace ,M\d+ with ','
+    raw = re.sub(r",M\d+", ",", raw)
+    # Remove trailing comma before closing brace/bracket (would be invalid JSON)
+    raw = re.sub(r",\s*\n(\s*[}\]])", r"\n\1", raw)
+    start = raw.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    end = -1
+    for idx in range(start, len(raw)):
+        if raw[idx] == "{":
+            depth += 1
+        elif raw[idx] == "}":
+            depth -= 1
+            if depth == 0:
+                end = idx + 1
+                break
+    if end == -1:
+        return None
+    try:
+        return json.loads(raw[start:end])
+    except Exception:
+        return None
+
 
 def seed_from_excel(xlsx_path: str) -> dict:
     """Seed test cases from the Capstone Question Set Excel file."""
@@ -81,6 +110,53 @@ def seed_from_excel(xlsx_path: str) -> dict:
             conv_idx += 1
     except Exception as e:
         st.warning(f"Could not load LLM-Wan sheet from Excel: {e}")
+
+    try:
+        # --- SQL performance tests (sheet: Shahzad Work) ---
+        # Alternating rows: odd = question row (Q.no + question text)
+        #                   even = metrics JSON blob in the Question column
+        perf_df = pd.read_excel(xlsx_path, sheet_name="Shahzad Work")
+        perf_idx = 1
+        rows = list(perf_df.itertuples(index=True))
+        i = 0
+        while i < len(rows) - 1:
+            q_row = rows[i]
+            m_row = rows[i + 1]
+            i += 2
+            q_no = q_row[1]   # Q.no column
+            question = str(q_row[2]).strip()   # Question column
+            raw_metrics = str(m_row[2])        # metrics JSON in Question column
+
+            if not question or question.lower() == "nan":
+                continue
+
+            data = extract_perf_json(raw_metrics)
+            if data is None:
+                continue
+
+            g = data.get("generation", {})
+            e = data.get("execution", {})
+            attempts = g.get("attempts", [{}])
+            baseline_total_ms = round(g.get("total_ms", 0), 1)
+            baseline_llm_ms = round(attempts[0].get("llm_latency_ms", 0), 1) if attempts else 0
+            baseline_db_ms = round(attempts[0].get("execution_ms", 0), 2) if attempts else 0
+            rows_returned = e.get("rows_returned", 0)
+            final_sql = g.get("final_sql", "").strip()
+
+            cases["sql_perf_tests"].append({
+                "id": f"perf_{perf_idx:03d}",
+                "question": question,
+                "golden_sql": final_sql,
+                "max_ms_threshold": round(baseline_total_ms * 2),
+                "expected_row_count": rows_returned,
+                "baseline_total_ms": baseline_total_ms,
+                "baseline_llm_ms": baseline_llm_ms,
+                "baseline_db_ms": baseline_db_ms,
+                "notes": "",
+            })
+            perf_idx += 1
+    except Exception as e:
+        st.warning(f"Could not load Shahzad Work sheet from Excel: {e}")
 
     return cases
 
@@ -194,25 +270,31 @@ def score_sql_output_test(test: dict) -> dict:
 
 
 def score_sql_perf_test(test: dict) -> dict:
-    """Run a SQL performance test: measure execution time and row count."""
+    """Run a SQL performance test: measure generation + DB execution time and row count."""
     result = {
         "id": test["id"],
         "question": test["question"],
         "generated_sql": "",
         "validity": False,
         "executed": False,
-        "elapsed_ms": 0.0,
+        "elapsed_total_ms": 0.0,
+        "elapsed_db_ms": 0.0,
         "max_ms_threshold": test.get("max_ms_threshold") or 0,
+        "baseline_total_ms": test.get("baseline_total_ms") or 0,
+        "baseline_db_ms": test.get("baseline_db_ms") or 0,
         "actual_row_count": 0,
         "expected_row_count": test.get("expected_row_count") or 0,
-        "time_ok": True,   # True if no threshold set
-        "rows_ok": True,   # True if no expected count set
+        "time_ok": True,
+        "rows_ok": True,
         "error": "",
         "passed": False,
     }
 
     try:
+        # Measure full generation time (includes LLM call)
+        t_gen_start = time.perf_counter()
         generated_sql, gen_error = generate_sql_with_retry(test["question"], max_attempts=2)
+        elapsed_gen_ms = (time.perf_counter() - t_gen_start) * 1000
         result["generated_sql"] = generated_sql
 
         if gen_error:
@@ -225,12 +307,14 @@ def score_sql_perf_test(test: dict) -> dict:
             result["error"] = err_msg
             return result
 
-        t0 = time.perf_counter()
+        # Measure DB execution time separately
+        t_db_start = time.perf_counter()
         try:
             result_df = db_query(generated_sql)
-            elapsed_ms = (time.perf_counter() - t0) * 1000
+            elapsed_db_ms = (time.perf_counter() - t_db_start) * 1000
             result["executed"] = True
-            result["elapsed_ms"] = round(elapsed_ms, 2)
+            result["elapsed_db_ms"] = round(elapsed_db_ms, 2)
+            result["elapsed_total_ms"] = round(elapsed_gen_ms + elapsed_db_ms, 1)
             result["actual_row_count"] = len(result_df)
         except Exception as e:
             result["error"] = f"Execution error: {e}"
@@ -238,7 +322,7 @@ def score_sql_perf_test(test: dict) -> dict:
 
         threshold = result["max_ms_threshold"]
         if threshold and threshold > 0:
-            result["time_ok"] = result["elapsed_ms"] <= threshold
+            result["time_ok"] = result["elapsed_total_ms"] <= threshold
 
         expected_rows = result["expected_row_count"]
         if expected_rows and expected_rows > 0:
@@ -411,12 +495,14 @@ def _results_to_df_perf(results: list) -> pd.DataFrame:
         rows.append({
             "ID": r["id"],
             "Question": r["question"][:80] + "..." if len(r["question"]) > 80 else r["question"],
-            "Generated SQL": (r["generated_sql"][:60] + "...") if len(r.get("generated_sql", "")) > 60 else r.get("generated_sql", ""),
             "Valid": _check_mark(r["validity"]),
             "Executed": _check_mark(r["executed"]),
-            "Time (ms)": r.get("elapsed_ms", 0),
-            "Threshold (ms)": r.get("max_ms_threshold") or "—",
+            "Total ms": r.get("elapsed_total_ms", 0),
+            "Baseline ms": r.get("baseline_total_ms") or "—",
+            "Threshold ms": r.get("max_ms_threshold") or "—",
             "Time OK": _check_mark(r.get("time_ok", True)),
+            "DB ms": r.get("elapsed_db_ms", 0),
+            "Baseline DB ms": r.get("baseline_db_ms") or "—",
             "Rows": r.get("actual_row_count", 0),
             "Exp Rows": r.get("expected_row_count") or "—",
             "Rows OK": _check_mark(r.get("rows_ok", True)),
