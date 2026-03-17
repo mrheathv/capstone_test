@@ -240,12 +240,14 @@ def score_sql_output_test(test: dict) -> dict:
         "accuracy": False,
         "accuracy_detail": "",
         "error": "",
+        "tokens": 0,
         "passed": False,
     }
 
     try:
-        generated_sql, gen_error = generate_sql_with_retry(test["question"], max_attempts=2)
+        generated_sql, gen_error, _tokens = generate_sql_with_retry(test["question"], max_attempts=2)
         result["generated_sql"] = generated_sql
+        result["tokens"] = _tokens
 
         if gen_error:
             result["error"] = f"SQL generation failed: {gen_error}"
@@ -318,15 +320,17 @@ def score_sql_perf_test(test: dict) -> dict:
         "time_ok": True,
         "rows_ok": True,
         "error": "",
+        "tokens": 0,
         "passed": False,
     }
 
     try:
         # Measure full generation time (includes LLM call)
         t_gen_start = time.perf_counter()
-        generated_sql, gen_error = generate_sql_with_retry(test["question"], max_attempts=2)
+        generated_sql, gen_error, _tokens = generate_sql_with_retry(test["question"], max_attempts=2)
         elapsed_gen_ms = (time.perf_counter() - t_gen_start) * 1000
         result["generated_sql"] = generated_sql
+        result["tokens"] = _tokens
 
         if gen_error:
             result["error"] = f"SQL generation failed: {gen_error}"
@@ -942,19 +946,47 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
                 _log = st.session_state.setdefault("eval_console_log", [])
                 _idx = st.session_state.get("eval_progress_idx", 0) + 1
                 _total = st.session_state.get("eval_total_count", 1)
-                _q = item["test"]["question"][:55]
                 if item["type"] == "sql_output":
                     _status = "PASS" if r["passed"] else "FAIL"
+                    _sql = (r.get("generated_sql") or r.get("error", "N/A")).replace("\n", " ")
                     _detail = r.get("accuracy_detail") or r.get("error", "")
-                    _log.append(f"[{_idx:>3}/{_total}] SQL Output  #{r['id']}  \"{_q}\"  →  {_status}  {_detail[:55]}")
+                    _tok = f"  | tokens: {r['tokens']}" if r.get("tokens") else ""
+                    _log.append(
+                        f"[{_idx:>3}/{_total}] SQL Output  #{r['id']}  →  {_status}\n"
+                        f"  Q: {r['question']}\n"
+                        f"  SQL: {_sql[:200]}\n"
+                        f"  Result: {_detail[:80]}{_tok}"
+                    )
                 elif item["type"] == "sql_perf":
                     _status = "PASS" if r["passed"] else "FAIL"
-                    _detail = f"{r['elapsed_total_ms']}ms, {r['actual_row_count']} rows" if r["executed"] else r.get("error", "")
-                    _log.append(f"[{_idx:>3}/{_total}] SQL Perf    #{r['id']}  \"{_q}\"  →  {_status}  {_detail[:55]}")
+                    _sql = (r.get("generated_sql") or r.get("error", "N/A")).replace("\n", " ")
+                    if r["executed"]:
+                        _timing = (
+                            f"{r['elapsed_total_ms']}ms total / {r['elapsed_db_ms']}ms DB"
+                            f"  | Rows: {r['actual_row_count']}/{r['expected_row_count']} expected"
+                        )
+                    else:
+                        _timing = r.get("error", "did not execute")
+                    _tok = f"  | tokens: {r['tokens']}" if r.get("tokens") else ""
+                    _log.append(
+                        f"[{_idx:>3}/{_total}] SQL Perf    #{r['id']}  →  {_status}\n"
+                        f"  Q: {r['question']}\n"
+                        f"  SQL: {_sql[:200]}\n"
+                        f"  Time: {_timing}{_tok}"
+                    )
                 elif item["type"] == "conv":
                     _status = "PASS" if r["passed"] else "FAIL"
-                    _detail = f"score={r['weighted_score']:.3f}"
-                    _log.append(f"[{_idx:>3}/{_total}] Conv        #{r['id']}  \"{_q}\"  →  {_status}  {_detail}")
+                    _resp = (r.get("agent_response") or "").replace("\n", " ")
+                    _scores = "  |  ".join(f"{k}={v:.2f}" for k, v in r.get("scores", {}).items())
+                    _rat = (r.get("rationale") or "").replace("\n", " ")
+                    _log.append(
+                        f"[{_idx:>3}/{_total}] Conv        #{r['id']}  →  {_status}  (score={r['weighted_score']:.3f})\n"
+                        f"  Q: {r['question']}\n"
+                        f"  Response: {_resp[:200]}\n"
+                        f"  Scores: {_scores}\n"
+                        f"  Rationale: {_rat[:200]}"
+                    )
+                _log.append("")  # blank separator between entries
             except Exception as e:
                 st.session_state["eval_partial"].setdefault("errors", []).append(str(e))
             st.session_state["eval_progress_idx"] = st.session_state.get("eval_progress_idx", 0) + 1

@@ -27,19 +27,20 @@ def validate_sql(sql: str) -> tuple[bool, str]:
     return True, ""
 
 
-def generate_sql_with_retry(user_question: str, max_attempts: int = 2) -> tuple[str, str]:
+def generate_sql_with_retry(user_question: str, max_attempts: int = 2) -> tuple[str, str, int]:
     """
     Generate SQL with error recovery.
-    Returns: (sql, error_message)
+    Returns: (sql, error_message, total_tokens)
     If successful, error_message is empty string.
     """
     client = get_openai_client()
     schema = get_schema_info()
     context = get_business_context()
-    
+
     last_error = ""
     last_sql = ""
-    
+    total_tokens = 0
+
     for attempt in range(max_attempts):
         if attempt == 0:
             # First attempt - normal prompt
@@ -78,34 +79,37 @@ Please fix the query. Pay careful attention to:
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}]
         )
-        
+
+        if response.usage:
+            total_tokens += response.usage.total_tokens
+
         sql = response.choices[0].message.content.strip()
-        
+
         # Clean markdown
         if sql.startswith("```"):
             sql = "\n".join(sql.split("\n")[1:])
         if sql.endswith("```"):
             sql = "\n".join(sql.split("\n")[:-1])
         sql = sql.strip()
-        
+
         # Validate
         is_valid, error_msg = validate_sql(sql)
         if not is_valid:
             last_error = error_msg
             last_sql = sql
             continue
-        
+
         # Try to execute
         try:
             db_query(sql)  # Test execution
-            return sql, ""  # Success!
+            return sql, "", total_tokens  # Success!
         except Exception as e:
             last_error = str(e)
             last_sql = sql
             # Continue to next attempt
-    
+
     # All attempts failed
-    return last_sql, last_error
+    return last_sql, last_error, total_tokens
 
 
 
