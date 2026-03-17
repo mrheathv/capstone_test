@@ -3,6 +3,7 @@ Evaluation framework for the Sales Chatbot.
 Provides test case management, scoring, and results display.
 """
 import json
+import os
 import re
 import time
 import sys
@@ -20,6 +21,13 @@ from database.connection import db_query
 # ── Constants ────────────────────────────────────────────────────────────────
 
 CONV_PASS_THRESHOLD = 0.6   # weighted score >= this → pass
+
+LLM_PROVIDERS = {
+    "OpenAI":   {"model": "gpt-4o-mini",           "env_key": "OPENAI_API_KEY"},
+    "Claude":   {"model": "claude-3-haiku-20240307","env_key": "ANTHROPIC_API_KEY"},
+    "DeepSeek": {"model": "deepseek-chat",          "env_key": "DEEPSEEK_API_KEY"},
+    "Gemini":   {"model": "gemini-1.5-flash",       "env_key": "GEMINI_API_KEY"},
+}
 
 DEFAULT_RUBRIC = {
     "conversational": [
@@ -375,10 +383,10 @@ def score_sql_perf_test(test: dict) -> dict:
     return result
 
 
-def llm_judge(question: str, response: str, expected_themes: str, rubric_dims: list) -> dict:
-    """Use GPT to score a conversational response using rubric dimensions. Returns scores 0-10 per dimension."""
-    from openai import OpenAI
-    client = OpenAI()
+def llm_judge(question: str, response: str, expected_themes: str, rubric_dims: list, provider: str = "OpenAI") -> dict:
+    """Use an LLM to score a conversational response using rubric dimensions. Returns scores 0-10 per dimension."""
+    cfg = LLM_PROVIDERS.get(provider, LLM_PROVIDERS["OpenAI"])
+    model = cfg["model"]
 
     dim_lines = "\n".join(
         f"- {d['dimension']} ({int(d['weight']*100)}%): {d['description']}"
@@ -401,11 +409,35 @@ Respond ONLY with valid JSON (no other text):
 {example_json}"""
 
     try:
-        api_response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        raw = api_response.choices[0].message.content.strip()
+        if provider == "Claude":
+            import anthropic
+            client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+            api_response = client.messages.create(
+                model=model,
+                max_tokens=512,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = api_response.content[0].text.strip()
+        else:
+            from openai import OpenAI
+            if provider == "DeepSeek":
+                client = OpenAI(
+                    api_key=os.environ.get("DEEPSEEK_API_KEY"),
+                    base_url="https://api.deepseek.com",
+                )
+            elif provider == "Gemini":
+                client = OpenAI(
+                    api_key=os.environ.get("GEMINI_API_KEY"),
+                    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                )
+            else:  # OpenAI
+                client = OpenAI()
+            api_response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = api_response.choices[0].message.content.strip()
+
         if raw.startswith("```"):
             raw = "\n".join(raw.split("\n")[1:])
         if raw.endswith("```"):
@@ -420,7 +452,7 @@ Respond ONLY with valid JSON (no other text):
         return result
 
 
-def score_conversational_test(test: dict, rubric_dims: list) -> dict:
+def score_conversational_test(test: dict, rubric_dims: list, provider: str = "OpenAI") -> dict:
     """Run a conversational test through the agent and LLM judge using rubric dimensions."""
     from agent.core import agent_answer
 
@@ -440,7 +472,7 @@ def score_conversational_test(test: dict, rubric_dims: list) -> dict:
         agent_response = agent_answer(test["question"])
         result["agent_response"] = agent_response
 
-        raw = llm_judge(test["question"], agent_response, test.get("expected_themes", ""), rubric_dims)
+        raw = llm_judge(test["question"], agent_response, test.get("expected_themes", ""), rubric_dims, provider=provider)
         rationale = raw.pop("rationale", "")
 
         # Normalize scores (0-10 → 0.0-1.0) and compute weighted sum
@@ -753,6 +785,19 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
     """Render the full Evaluation tab."""
     st.header("Evaluation Framework")
 
+    # ── LLM selector ──────────────────────────────────────────────────────────
+    running = st.session_state.get("eval_running", False)
+    col_llm, _ = st.columns([2, 4])
+    with col_llm:
+        st.selectbox(
+            "Judge LLM",
+            options=list(LLM_PROVIDERS.keys()),
+            index=0,
+            key="eval_llm_provider",
+            disabled=running,
+            help="Select which LLM is used to score conversational test responses.",
+        )
+
     # ── Load test cases ───────────────────────────────────────────────────────
     if "eval_cases" not in st.session_state:
         with st.spinner("Loading test cases..."):
@@ -761,7 +806,6 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
     rubric = cases.get("rubric", DEFAULT_RUBRIC)
 
     # ── Run controls ──────────────────────────────────────────────────────────
-    running = st.session_state.get("eval_running", False)
     progress_idx = st.session_state.get("eval_progress_idx", 0)
     total_count  = st.session_state.get("eval_total_count", 1)
 
@@ -799,7 +843,8 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
             st.session_state["eval_stop"]         = False
             st.session_state["eval_progress_idx"] = 0
             st.session_state["eval_total_count"]  = len(queue)
-            st.session_state["eval_console_log"]  = []
+            st.session_state["eval_console_log"]    = []
+            st.session_state["eval_selected_provider"] = st.session_state.get("eval_llm_provider", "OpenAI")
             st.rerun()
 
     # Progress bar while running
@@ -940,7 +985,8 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
                     r = score_sql_perf_test(item["test"])
                     st.session_state["eval_partial"]["sql_perf_results"].append(r)
                 elif item["type"] == "conv":
-                    r = score_conversational_test(item["test"], rubric.get("conversational", DEFAULT_RUBRIC["conversational"]))
+                    _provider = st.session_state.get("eval_selected_provider", "OpenAI")
+                    r = score_conversational_test(item["test"], rubric.get("conversational", DEFAULT_RUBRIC["conversational"]), provider=_provider)
                     st.session_state["eval_partial"]["conv_results"].append(r)
 
                 _log = st.session_state.setdefault("eval_console_log", [])
