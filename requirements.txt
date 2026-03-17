@@ -1,0 +1,9 @@
+streamlit
+duckdb
+pandas
+pydantic
+openai
+langchain
+faiss-cpu
+pyyaml
+tabulate

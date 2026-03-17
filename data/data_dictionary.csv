@@ -1,0 +1,29 @@
+Table,Field,Description
+accounts,account,Company name
+accounts,sector,Industry
+accounts,year_established,Year Established
+accounts,revenue,Annual revenue (in millions of USD)
+accounts,employees,Number of employees
+accounts,office_location,Headquarters
+accounts,subsidiary_of,Parent company
+accounts,propensity_to_buy,The probability to purchase any product with a new engagement
+products,product,Product name
+products,series,Product series
+products,sales_price,Suggested retail price
+sales_teams,sales_agent,Sales agent
+sales_teams,manager,Respective sales manager
+sales_teams,regional_office,Regional office
+sales_pipeline,opportunity_id,Unique identifier
+sales_pipeline,sales_agent,Sales agent 
+sales_pipeline,product,Product name
+sales_pipeline,account,Company name
+sales_pipeline,deal_stage,Sales pipeline stage (Prospecting > Engaging > Won / Lost)
+sales_pipeline,engage_date,"Date in which the ""Engaging"" deal stage was initiated"
+sales_pipeline,close_date,"Date in which the deal was ""Won"" or ""Lost"""
+sales_pipeline,close_value,Revenue from the deal
+interactions,account_name,Company name
+interactions,contact_name,The point of contact at the company with whom we are engaging
+interactions,activity_type,"The type of interaction (meeting or email), meetings could be in person or virtual"
+interactions,status,"The status of the interaction, either completed or scheduled, note that these are manually adjusted. A scheduled meeting may still be completed but just hasn't been updated in the system. "
+interactions,timestamp,Date of the interaction
+interactions,comment,"Summary of the interaction, could also include the email that was sent"

@@ -1,0 +1,86 @@
+account_id,account,sector,year_established,revenue,employees,office_location,subsidiary_of,propensity_to_buy
+1000,Acme Corporation,technolgy,1996,1100.04,2822,United States,,0.586206897
+1001,Betasoloin,medical,1999,251.41,495,United States,,0.62962963
+1002,Betatech,medical,1986,647.18,1185,Kenya,,0.61627907
+1003,Bioholding,medical,2012,587.34,1356,Philipines,,0.588235294
+1004,Bioplex,medical,1991,326.82,1016,United States,,0.673913043
+1005,Blackzim,retail,2009,497.11,1588,United States,,0.577464789
+1006,Bluth Company,technolgy,1993,1242.32,3027,United States,Acme Corporation,0.583333333
+1007,Bubba Gump,software,2002,987.39,2253,United States,,0.666666667
+1008,Cancity,retail,2001,718.62,2448,United States,,0.591397849
+1009,Cheers,entertainment,1993,4269.9,6472,United States,Massive Dynamic,0.633333333
+1010,Codehow,software,1998,2714.9,2641,United States,Acme Corporation,0.615384615
+1011,Condax,medical,2017,4.54,9,United States,,0.660377358
+1012,Conecom,technolgy,2005,1520.66,1806,United States,,0.613636364
+1013,Dalttechnology,software,2013,98.79,96,United States,Bubba Gump,0.704918033
+1014,dambase,marketing,1995,2173.98,2928,United States,Inity,0.593406593
+1015,Domzoom,entertainment,1998,217.87,551,United States,,0.679487179
+1016,Doncon,technolgy,2010,587.72,1501,United States,,0.589285714
+1017,Donquadtech,technolgy,1992,1712.68,3194,United States,Acme Corporation,0.714285714
+1018,Dontechi,software,1982,4618,10083,United States,,0.598290598
+1019,Donware,marketing,1999,1197.44,2570,United States,,0.555555556
+1020,Fasehatice,retail,1990,4968.91,7523,United States,,0.604938272
+1021,Faxquote,telecommunications,1995,1825.82,5595,United States,Sonron,0.631578947
+1022,Finhigh,finance,2006,1102.43,1759,United States,,0.580645161
+1023,Finjob,employment,1988,2059.9,3644,United States,,0.703703704
+1024,Funholding,finance,1991,2819.5,7227,United States,Golddex,0.595959596
+1025,Ganjaflex,retail,1995,5158.71,17479,Japan,,0.613333333
+1026,Gekko & Co,retail,1990,2520.83,3502,United States,,0.705882353
+1027,Genco Pura Olive Oil Company,retail,2007,894.33,1635,Italy,,0.620689655
+1028,Globex Corporation,technolgy,2000,1223.72,2497,Norway,,0.588235294
+1029,Gogozoom,telecommunications,2007,86.68,187,United States,Sonron,0.698630137
+1030,Golddex,finance,2008,52.5,165,United States,,0.568965517
+1031,Goodsilron,marketing,2000,2952.73,5107,United States,,0.738636364
+1032,Green-Plus,services,2003,692.19,1922,United States,,0.569444444
+1033,Groovestreet,retail,2003,223.8,299,United States,,0.636363636
+1034,Hatfan,services,1982,792.46,1299,United States,,0.565789474
+1035,Hottechi,technolgy,1997,8170.38,16499,Korea,,0.575129534
+1036,Initech,telecommunications,1994,6395.05,20275,United States,,0.587301587
+1037,Inity,marketing,1986,2403.58,8801,United States,,0.68
+1038,Isdom,medical,2002,3178.24,4540,United States,,0.580357143
+1039,Iselectrics,technolgy,2011,527.11,1428,United States,Acme Corporation,0.657894737
+1040,J-Texon,retail,1989,1388.67,3583,United States,,0.684931507
+1041,Kan-code,software,1982,11698.03,34288,United States,,0.614973262
+1042,Kinnamplus,retail,2004,702.72,1831,United States,,0.64516129
+1043,Konex,technolgy,1980,7708.38,13756,United States,,0.631578947
+1044,Konmatfix,marketing,1985,375.43,1190,United States,,0.65625
+1045,Labdrill,medical,1985,2741.37,9226,United States,,0.647887324
+1046,Lexiqvolax,medical,2004,1618.89,3889,United States,,0.590909091
+1047,Massive Dynamic,entertainment,1989,665.06,1095,United States,,0.644067797
+1048,Mathtouch,marketing,1984,3027.46,9516,Jordan,,0.641975309
+1049,Nam-zim,services,1987,405.59,1179,Brazil,Warephase,0.615384615
+1050,Newex,services,1991,1012.72,3492,Germany,,0.725490196
+1051,Ontomedia,employment,1997,882.12,2769,United States,,0.607142857
+1052,Opentech,finance,1994,355.23,853,United States,,0.6
+1053,Plexzap,retail,2001,2437.85,4874,United States,,0.635135135
+1054,Plusstrip,entertainment,2002,349.81,315,United States,,0.717391304
+1055,Plussunin,retail,2003,1419.98,4018,United States,,0.604395604
+1056,Rangreen,technolgy,1987,2938.67,8775,Panama,,0.75
+1057,Rantouch,telecommunications,1994,1188.42,3015,United States,,0.584615385
+1058,Ron-tech,medical,1992,3922.42,6837,United States,,0.654205607
+1059,Rundofase,technolgy,1983,1008.06,1238,United States,,0.677083333
+1060,Scotfind,software,1996,6354.87,16780,United States,Bubba Gump,0.683673469
+1061,Scottech,marketing,2012,45.39,100,United States,Inity,0.623376623
+1062,Silis,medical,1994,2818.38,6290,United States,,0.555555556
+1063,Singletechno,retail,1996,2214.94,5374,United States,,0.692307692
+1064,Sonron,telecommunications,1999,1699.85,5108,United States,,0.630136986
+1065,Stanredtax,finance,1987,1698.2,3798,United States,,0.69
+1066,Statholdings,employment,1997,291.27,586,United States,,0.53125
+1067,Streethex,retail,1988,1376.8,1165,Belgium,,0.605769231
+1068,Sumace,retail,2000,167.89,493,Romania,,0.56097561
+1069,Sunnamplex,marketing,2008,894.37,1593,Poland,,0.661764706
+1070,The New York Inquirer,medical,1996,439.21,792,United States,,0.636363636
+1071,Toughzap,retail,1995,332.43,799,United States,,0.619047619
+1072,Treequote,telecommunications,1988,5266.09,8595,United States,Sonron,0.613207547
+1073,Umbrella Corporation,finance,1998,2022.14,5113,United States,,0.623376623
+1074,Vehement Capital Partners,finance,1993,646.1,883,United States,Golddex,0.596491228
+1075,Warephase,services,1997,2041.73,5276,United States,,0.693069307
+1076,Xx-holding,finance,1993,7537.24,20293,United States,,0.607594937
+1077,Xx-zobam,entertainment,1989,3838.39,8274,United States,,0.554216867
+1078,Y-corporation,employment,1983,2871.35,9561,United States,,0.635294118
+1079,Yearin,retail,2005,2261.05,3851,United States,,0.642857143
+1080,Zathunicon,retail,2010,71.12,144,United States,,0.653846154
+1081,Zencorporation,technolgy,2011,40.79,142,China,,0.6875
+1082,Zoomit,entertainment,1992,324.19,978,United States,,0.717391304
+1083,Zotware,software,1979,4478.47,13809,United States,,0.671428571
+1084,Zumgoity,medical,1984,441.08,1210,United States,,0.631578947
