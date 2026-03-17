@@ -125,7 +125,7 @@ def text_to_sql_handler(args: Dict[str, Any]) -> str:
         return "Error: No question provided."
     
     # Generate SQL with retry logic
-    sql, error = generate_sql_with_retry(question, max_attempts=2)
+    sql, error, _ = generate_sql_with_retry(question, max_attempts=2)
 
     if error:
         return f"SQL generation failed: {error}\n\nLast attempted SQL:\n```sql\n{sql}\n```"
