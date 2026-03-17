@@ -756,51 +756,6 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
     cases = st.session_state["eval_cases"]
     rubric = cases.get("rubric", DEFAULT_RUBRIC)
 
-    # ── Incremental runner — executes ONE test per rerun cycle ────────────────
-    if st.session_state.get("eval_running"):
-        queue = st.session_state.get("eval_queue", [])
-        if queue and not st.session_state.get("eval_stop"):
-            item = queue.pop(0)
-            st.session_state["eval_queue"] = queue
-            try:
-                if item["type"] == "sql_output":
-                    r = score_sql_output_test(item["test"])
-                    st.session_state["eval_partial"]["sql_output_results"].append(r)
-                elif item["type"] == "sql_perf":
-                    r = score_sql_perf_test(item["test"])
-                    st.session_state["eval_partial"]["sql_perf_results"].append(r)
-                elif item["type"] == "conv":
-                    r = score_conversational_test(item["test"], rubric.get("conversational", DEFAULT_RUBRIC["conversational"]))
-                    st.session_state["eval_partial"]["conv_results"].append(r)
-
-                _log = st.session_state.setdefault("eval_console_log", [])
-                _idx = st.session_state.get("eval_progress_idx", 0) + 1
-                _total = st.session_state.get("eval_total_count", 1)
-                _q = item["test"]["question"][:55]
-                if item["type"] == "sql_output":
-                    _status = "PASS" if r["passed"] else "FAIL"
-                    _detail = r.get("accuracy_detail") or r.get("error", "")
-                    _log.append(f"[{_idx:>3}/{_total}] SQL Output  #{r['id']}  \"{_q}\"  →  {_status}  {_detail[:55]}")
-                elif item["type"] == "sql_perf":
-                    _status = "PASS" if r["passed"] else "FAIL"
-                    _detail = f"{r['elapsed_total_ms']}ms, {r['actual_row_count']} rows" if r["executed"] else r.get("error", "")
-                    _log.append(f"[{_idx:>3}/{_total}] SQL Perf    #{r['id']}  \"{_q}\"  →  {_status}  {_detail[:55]}")
-                elif item["type"] == "conv":
-                    _status = "PASS" if r["passed"] else "FAIL"
-                    _detail = f"score={r['weighted_score']:.3f}"
-                    _log.append(f"[{_idx:>3}/{_total}] Conv        #{r['id']}  \"{_q}\"  →  {_status}  {_detail}")
-            except Exception as e:
-                st.session_state["eval_partial"].setdefault("errors", []).append(str(e))
-            st.session_state["eval_progress_idx"] = st.session_state.get("eval_progress_idx", 0) + 1
-            st.rerun()
-        else:
-            # Queue empty or stop requested — finalise
-            partial = st.session_state.get("eval_partial", {})
-            st.session_state["eval_results"] = {**partial, "summary": _compute_summary(partial)}
-            st.session_state["eval_running"] = False
-            st.session_state["eval_stop"] = False
-            st.rerun()
-
     # ── Run controls ──────────────────────────────────────────────────────────
     running = st.session_state.get("eval_running", False)
     progress_idx = st.session_state.get("eval_progress_idx", 0)
@@ -850,20 +805,25 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
         next_q = queue[0]["test"]["question"][:70] if queue else "finalising…"
         st.progress(frac, text=f"Running {progress_idx}/{total_count} — next: {next_q}")
 
-    # Live console (expanded while running, collapsed when done)
-    console_log = st.session_state.get("eval_console_log", [])
-    if console_log or running:
-        with st.expander("Test Console", expanded=running):
-            st.code("\n".join(console_log) if console_log else "Starting…", language=None)
-
     st.divider()
 
     # ── Results Dashboard ─────────────────────────────────────────────────────
     conv_dims = rubric.get("conversational", DEFAULT_RUBRIC["conversational"])
-    results = st.session_state.get("eval_results")
-    if results:
-        partial_label = " (partial — stopped early)" if st.session_state.get("eval_stop") is False and not running else ""
-        st.subheader(f"Results{partial_label}")
+    partial  = st.session_state.get("eval_partial", {})
+    results  = st.session_state.get("eval_results")
+
+    display_data  = None
+    display_label = ""
+    if running and any(partial.get(k) for k in ["sql_output_results", "sql_perf_results", "conv_results"]):
+        display_data  = {**partial, "summary": _compute_summary(partial)}
+        display_label = " (live)"
+    elif results and not running:
+        display_data  = results
+        display_label = " (partial — stopped early)" if st.session_state.get("eval_stop") is False else ""
+
+    if display_data:
+        results = display_data  # alias so the block below works unchanged
+        st.subheader(f"Results{display_label}")
 
         s = results["summary"]
         m1, m2, m3, m4, m5 = st.columns(5)
@@ -953,3 +913,56 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
     with tab_conv:
         st.caption(f"Pass: LLM-as-judge weighted score ≥ {CONV_PASS_THRESHOLD}  ({pass_threshold_label})")
         _render_crud("conversational_tests", cases, json_path)
+
+    # ── Live console log (toggleable, at the bottom of the page) ──────────────
+    console_log = st.session_state.get("eval_console_log", [])
+    if console_log or running:
+        st.divider()
+        with st.expander("Test Console", expanded=running):
+            st.code("\n".join(console_log) if console_log else "Starting…", language=None)
+
+    # ── Incremental runner — executes ONE test per rerun cycle ────────────────
+    # Placed at the bottom so all UI elements render before st.rerun() is called.
+    if st.session_state.get("eval_running"):
+        queue = st.session_state.get("eval_queue", [])
+        if queue and not st.session_state.get("eval_stop"):
+            item = queue.pop(0)
+            st.session_state["eval_queue"] = queue
+            try:
+                if item["type"] == "sql_output":
+                    r = score_sql_output_test(item["test"])
+                    st.session_state["eval_partial"]["sql_output_results"].append(r)
+                elif item["type"] == "sql_perf":
+                    r = score_sql_perf_test(item["test"])
+                    st.session_state["eval_partial"]["sql_perf_results"].append(r)
+                elif item["type"] == "conv":
+                    r = score_conversational_test(item["test"], rubric.get("conversational", DEFAULT_RUBRIC["conversational"]))
+                    st.session_state["eval_partial"]["conv_results"].append(r)
+
+                _log = st.session_state.setdefault("eval_console_log", [])
+                _idx = st.session_state.get("eval_progress_idx", 0) + 1
+                _total = st.session_state.get("eval_total_count", 1)
+                _q = item["test"]["question"][:55]
+                if item["type"] == "sql_output":
+                    _status = "PASS" if r["passed"] else "FAIL"
+                    _detail = r.get("accuracy_detail") or r.get("error", "")
+                    _log.append(f"[{_idx:>3}/{_total}] SQL Output  #{r['id']}  \"{_q}\"  →  {_status}  {_detail[:55]}")
+                elif item["type"] == "sql_perf":
+                    _status = "PASS" if r["passed"] else "FAIL"
+                    _detail = f"{r['elapsed_total_ms']}ms, {r['actual_row_count']} rows" if r["executed"] else r.get("error", "")
+                    _log.append(f"[{_idx:>3}/{_total}] SQL Perf    #{r['id']}  \"{_q}\"  →  {_status}  {_detail[:55]}")
+                elif item["type"] == "conv":
+                    _status = "PASS" if r["passed"] else "FAIL"
+                    _detail = f"score={r['weighted_score']:.3f}"
+                    _log.append(f"[{_idx:>3}/{_total}] Conv        #{r['id']}  \"{_q}\"  →  {_status}  {_detail}")
+            except Exception as e:
+                st.session_state["eval_partial"].setdefault("errors", []).append(str(e))
+            st.session_state["eval_progress_idx"] = st.session_state.get("eval_progress_idx", 0) + 1
+            st.rerun()
+        else:
+            # Queue empty or stop requested — finalise
+            partial = st.session_state.get("eval_partial", {})
+            st.session_state["eval_results"] = {**partial, "summary": _compute_summary(partial)}
+            st.session_state["eval_running"] = False
+            st.session_state["eval_stop"] = False
+            st.rerun()
