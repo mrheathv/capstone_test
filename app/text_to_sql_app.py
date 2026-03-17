@@ -11,6 +11,7 @@ from agent import (
     register_tool
 )
 from database import db_query
+from evaluation import render_evaluation_tab
 
 
 def get_sales_agents() -> list:
@@ -61,7 +62,7 @@ register_tool(Tool(
 
 
 # Streamlit UI
-st.set_page_config(page_title='Sales Chatbot', layout='centered')
+st.set_page_config(page_title='Sales Chatbot', layout='wide')
 st.title('Sales Data Chatbot')
 
 # Sidebar with user context
@@ -97,30 +98,39 @@ with st.sidebar:
     st.code("accounts, interactions, products, sales_pipeline, sales_teams")
 
 
-# Initialize chat history
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {
-            "role": "assistant",
-            "content": "Hi! Ask me anything about your sales data. I'll search the database to answer your questions."
-        }
-    ]
+tab_chat, tab_eval = st.tabs(["Chat", "Evaluation"])
 
-# Display chat history
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+with tab_chat:
+    # Initialize chat history
+    if "messages" not in st.session_state:
+        st.session_state.messages = [
+            {
+                "role": "assistant",
+                "content": "Hi! Ask me anything about your sales data. I'll search the database to answer your questions."
+            }
+        ]
 
-# Chat input
-user_question = st.chat_input("Ask a question about your sales data...")
-if user_question:
-    st.session_state.messages.append({"role": "user", "content": user_question})
-    with st.chat_message("user"):
-        st.markdown(user_question)
-    
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            reply = agent_answer(user_question)
-            st.markdown(reply)
+    # Display chat history
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
-    st.session_state.messages.append({"role": "assistant", "content": reply})
+    # Chat input
+    user_question = st.chat_input("Ask a question about your sales data...")
+    if user_question:
+        st.session_state.messages.append({"role": "user", "content": user_question})
+        with st.chat_message("user"):
+            st.markdown(user_question)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                reply = agent_answer(user_question)
+                st.markdown(reply)
+
+        st.session_state.messages.append({"role": "assistant", "content": reply})
+
+with tab_eval:
+    render_evaluation_tab(
+        json_path=str(Path(__file__).parent / "test_cases.json"),
+        xlsx_path=str(Path(__file__).parent.parent / "Capstone Question Set.xlsx"),
+    )
