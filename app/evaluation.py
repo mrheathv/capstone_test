@@ -834,37 +834,10 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
 
     st.divider()
 
-    # ── Rubric editor ─────────────────────────────────────────────────────────
-    render_rubric_editor(cases, json_path)
-
-    st.divider()
-
-    # ── Test Case Management tabs ─────────────────────────────────────────────
-    st.subheader("Test Cases")
-    conv_dims = rubric.get("conversational", DEFAULT_RUBRIC["conversational"])
-    pass_threshold_label = " + ".join(f"{d['dimension']}×{d['weight']}" for d in conv_dims)
-    tab_out, tab_perf, tab_conv = st.tabs([
-        f"SQL Output Tests ({n_out})",
-        f"SQL Performance Tests ({n_perf})",
-        f"Conversational Tests ({n_conv})",
-    ])
-
-    with tab_out:
-        st.caption("Pass: generated SQL is valid, executes, and returns the same rows as the golden SQL.")
-        _render_crud("sql_output_tests", cases, json_path)
-
-    with tab_perf:
-        st.caption("Pass: generated SQL is valid, executes, and meets time/row thresholds (0 = skip that check).")
-        _render_crud("sql_perf_tests", cases, json_path)
-
-    with tab_conv:
-        st.caption(f"Pass: LLM-as-judge weighted score ≥ {CONV_PASS_THRESHOLD}  ({pass_threshold_label})")
-        _render_crud("conversational_tests", cases, json_path)
-
     # ── Results Dashboard ─────────────────────────────────────────────────────
+    conv_dims = rubric.get("conversational", DEFAULT_RUBRIC["conversational"])
     results = st.session_state.get("eval_results")
     if results:
-        st.divider()
         partial_label = " (partial — stopped early)" if st.session_state.get("eval_stop") is False and not running else ""
         st.subheader(f"Results{partial_label}")
 
@@ -886,6 +859,22 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
             all_passed = s["output_passed"] + s["perf_passed"] + s["conv_passed"]
             st.metric("Overall Pass", f"{all_passed}/{all_total}",
                       f"{all_passed/all_total*100:.0f}%" if all_total else "—")
+
+        if s["output_total"]:
+            st.progress(
+                s["output_passed"] / s["output_total"],
+                text=f"SQL Output: {s['output_passed']}/{s['output_total']} passed",
+            )
+        if s["perf_total"]:
+            st.progress(
+                s["perf_passed"] / s["perf_total"],
+                text=f"SQL Perf: {s['perf_passed']}/{s['perf_total']} passed",
+            )
+        if s["conv_total"]:
+            st.progress(
+                s["conv_passed"] / s["conv_total"],
+                text=f"Conversational: {s['conv_passed']}/{s['conv_total']} passed  (avg score: {s['conv_avg_score']:.2f})",
+            )
 
         res_tab1, res_tab2, res_tab3 = st.tabs(["SQL Output Results", "SQL Perf Results", "Conv Results"])
 
@@ -912,3 +901,31 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
                 st.download_button("⬇ Download CSV", df.to_csv(index=False), "conv_results.csv", "text/csv")
             else:
                 st.info("No conversational results yet.")
+
+        st.divider()
+
+    # ── Rubric editor ─────────────────────────────────────────────────────────
+    render_rubric_editor(cases, json_path)
+
+    st.divider()
+
+    # ── Test Case Management tabs ─────────────────────────────────────────────
+    st.subheader("Test Cases")
+    pass_threshold_label = " + ".join(f"{d['dimension']}×{d['weight']}" for d in conv_dims)
+    tab_out, tab_perf, tab_conv = st.tabs([
+        f"SQL Output Tests ({n_out})",
+        f"SQL Performance Tests ({n_perf})",
+        f"Conversational Tests ({n_conv})",
+    ])
+
+    with tab_out:
+        st.caption("Pass: generated SQL is valid, executes, and returns the same rows as the golden SQL.")
+        _render_crud("sql_output_tests", cases, json_path)
+
+    with tab_perf:
+        st.caption("Pass: generated SQL is valid, executes, and meets time/row thresholds (0 = skip that check).")
+        _render_crud("sql_perf_tests", cases, json_path)
+
+    with tab_conv:
+        st.caption(f"Pass: LLM-as-judge weighted score ≥ {CONV_PASS_THRESHOLD}  ({pass_threshold_label})")
+        _render_crud("conversational_tests", cases, json_path)
