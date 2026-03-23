@@ -283,22 +283,38 @@ def score_sql_output_test(test: dict) -> dict:
             result["passed"] = False
             return result
 
-        # Sort both by all columns, reset index, compare
+        # Compare values by position (ignoring column aliases) with stable row sort
         try:
-            cols = sorted(golden_df.columns.tolist())
-            g = golden_df[cols].sort_values(by=cols).reset_index(drop=True)
-            r = result_df[[c for c in cols if c in result_df.columns]]
-            r = r.sort_values(by=[c for c in cols if c in r.columns]).reset_index(drop=True)
-            match = g.equals(r)
-            result["accuracy"] = match
-            if match:
-                result["accuracy_detail"] = f"{len(golden_df)} rows match"
+            if len(result_df) != len(golden_df):
+                result["accuracy"] = False
+                result["accuracy_detail"] = f"shape mismatch: got {len(result_df)} rows, expected {len(golden_df)} rows"
+            elif result_df.shape[1] != golden_df.shape[1]:
+                result["accuracy"] = False
+                result["accuracy_detail"] = f"column count mismatch: got {result_df.shape[1]}, expected {golden_df.shape[1]}"
             else:
-                result["accuracy_detail"] = (
-                    f"shape mismatch: got {len(result_df)} rows, expected {len(golden_df)} rows"
-                    if len(result_df) != len(golden_df)
-                    else "row count matches but values differ"
-                )
+                def _sort_rows(df):
+                    key = df.astype(str).apply(lambda r: "|".join(r), axis=1)
+                    return df.iloc[key.argsort()].reset_index(drop=True)
+
+                g = _sort_rows(golden_df)
+                r = _sort_rows(result_df)
+
+                # Round floats to avoid precision noise, then compare by position
+                match = True
+                for i in range(g.shape[1]):
+                    gc = g.iloc[:, i]
+                    rc = r.iloc[:, i]
+                    if pd.api.types.is_numeric_dtype(gc) and pd.api.types.is_numeric_dtype(rc):
+                        if not gc.round(4).reset_index(drop=True).equals(rc.round(4).reset_index(drop=True)):
+                            match = False
+                            break
+                    else:
+                        if not gc.astype(str).reset_index(drop=True).equals(rc.astype(str).reset_index(drop=True)):
+                            match = False
+                            break
+
+                result["accuracy"] = match
+                result["accuracy_detail"] = f"{len(golden_df)} rows match" if match else "row count matches but values differ"
         except Exception as e:
             result["accuracy"] = False
             result["accuracy_detail"] = f"Comparison error: {e}"
