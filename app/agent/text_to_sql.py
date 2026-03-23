@@ -1,11 +1,28 @@
 import json
+import os
 from database import db_query, get_schema_info, get_business_context
 from typing import Dict, Any
 
-def get_openai_client():
-    """Initialize and return an OpenAI client"""
+_AGENT_MODELS = {
+    "OpenAI":   "gpt-4o-mini",
+    "Claude":   "claude-3-haiku-20240307",
+    "DeepSeek": "deepseek-chat",
+    "Gemini":   "gemini-1.5-flash",
+}
+
+
+def _get_completion_client(provider: str):
+    """Return (client, model, is_anthropic) for the given provider."""
+    model = _AGENT_MODELS.get(provider, _AGENT_MODELS["OpenAI"])
+    if provider == "Claude":
+        import anthropic
+        return anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY")), model, True
     from openai import OpenAI
-    return OpenAI()
+    if provider == "DeepSeek":
+        return OpenAI(api_key=os.environ.get("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com"), model, False
+    if provider == "Gemini":
+        return OpenAI(api_key=os.environ.get("GEMINI_API_KEY"), base_url="https://generativelanguage.googleapis.com/v1beta/openai/"), model, False
+    return OpenAI(), model, False
 
 def validate_sql(sql: str) -> tuple[bool, str]:
     """
@@ -27,13 +44,13 @@ def validate_sql(sql: str) -> tuple[bool, str]:
     return True, ""
 
 
-def generate_sql_with_retry(user_question: str, max_attempts: int = 2) -> tuple[str, str, int]:
+def generate_sql_with_retry(user_question: str, max_attempts: int = 2, provider: str = "OpenAI") -> tuple[str, str, int]:
     """
     Generate SQL with error recovery.
     Returns: (sql, error_message, total_tokens)
     If successful, error_message is empty string.
     """
-    client = get_openai_client()
+    client, model, is_anthropic = _get_completion_client(provider)
     schema = get_schema_info()
     context = get_business_context()
 
@@ -75,15 +92,21 @@ Please fix the query. Pay careful attention to:
 3. Generate ONLY the corrected SQL query, no explanation.
 """
         
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        if response.usage:
-            total_tokens += response.usage.total_tokens
-
-        sql = response.choices[0].message.content.strip()
+        if is_anthropic:
+            api_resp = client.messages.create(
+                model=model,
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            sql = api_resp.content[0].text.strip()
+        else:
+            api_resp = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            if api_resp.usage:
+                total_tokens += api_resp.usage.total_tokens
+            sql = api_resp.choices[0].message.content.strip()
 
         # Clean markdown
         if sql.startswith("```"):
@@ -116,16 +139,20 @@ Please fix the query. Pay careful attention to:
 # wrap our SQL generation in a tool handler function. 
 def text_to_sql_handler(args: Dict[str, Any]) -> str:
     """
-    Tool handler for generating and executing SQL from natural language. 
-    This wraps our existing generate_sql_with_retry logic. 
+    Tool handler for generating and executing SQL from natural language.
+    This wraps our existing generate_sql_with_retry logic.
+    Provider is read from st.session_state["_agent_llm_provider"] if set.
     """
+    import streamlit as st
     question = args.get("question", "")
 
     if not question:
         return "Error: No question provided."
-    
+
+    provider = st.session_state.get("_agent_llm_provider", "OpenAI")
+
     # Generate SQL with retry logic
-    sql, error, _ = generate_sql_with_retry(question, max_attempts=2)
+    sql, error, _ = generate_sql_with_retry(question, max_attempts=2, provider=provider)
 
     if error:
         return f"SQL generation failed: {error}\n\nLast attempted SQL:\n```sql\n{sql}\n```"

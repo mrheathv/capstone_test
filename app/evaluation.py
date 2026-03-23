@@ -452,7 +452,7 @@ Respond ONLY with valid JSON (no other text):
         return result
 
 
-def score_conversational_test(test: dict, rubric_dims: list, provider: str = "OpenAI") -> dict:
+def score_conversational_test(test: dict, rubric_dims: list, judge_provider: str = "OpenAI", agent_provider: str = "OpenAI") -> dict:
     """Run a conversational test through the agent and LLM judge using rubric dimensions."""
     from agent.core import agent_answer
 
@@ -469,10 +469,10 @@ def score_conversational_test(test: dict, rubric_dims: list, provider: str = "Op
     st.session_state.setdefault("current_user", "Eval Run")
 
     try:
-        agent_response = agent_answer(test["question"])
+        agent_response = agent_answer(test["question"], provider=agent_provider)
         result["agent_response"] = agent_response
 
-        raw = llm_judge(test["question"], agent_response, test.get("expected_themes", ""), rubric_dims, provider=provider)
+        raw = llm_judge(test["question"], agent_response, test.get("expected_themes", ""), rubric_dims, provider=judge_provider)
         rationale = raw.pop("rationale", "")
 
         # Normalize scores (0-10 → 0.0-1.0) and compute weighted sum
@@ -785,17 +785,26 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
     """Render the full Evaluation tab."""
     st.header("Evaluation Framework")
 
-    # ── LLM selector ──────────────────────────────────────────────────────────
+    # ── LLM selectors ─────────────────────────────────────────────────────────
     running = st.session_state.get("eval_running", False)
-    col_llm, _ = st.columns([2, 4])
-    with col_llm:
+    col_judge, col_agent, _ = st.columns([2, 2, 2])
+    with col_judge:
         st.selectbox(
             "Judge LLM",
             options=list(LLM_PROVIDERS.keys()),
             index=0,
             key="eval_llm_provider",
             disabled=running,
-            help="Select which LLM is used to score conversational test responses.",
+            help="LLM used to score conversational test responses.",
+        )
+    with col_agent:
+        st.selectbox(
+            "Agent LLM",
+            options=list(LLM_PROVIDERS.keys()),
+            index=0,
+            key="eval_agent_provider",
+            disabled=running,
+            help="LLM the chatbot agent uses when answering test questions.",
         )
 
     # ── Load test cases ───────────────────────────────────────────────────────
@@ -844,7 +853,8 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
             st.session_state["eval_progress_idx"] = 0
             st.session_state["eval_total_count"]  = len(queue)
             st.session_state["eval_console_log"]    = []
-            st.session_state["eval_selected_provider"] = st.session_state.get("eval_llm_provider", "OpenAI")
+            st.session_state["eval_selected_provider"]       = st.session_state.get("eval_llm_provider", "OpenAI")
+            st.session_state["eval_selected_agent_provider"] = st.session_state.get("eval_agent_provider", "OpenAI")
             st.rerun()
 
     # Progress bar while running
@@ -985,8 +995,9 @@ def render_evaluation_tab(json_path: str, xlsx_path: str) -> None:
                     r = score_sql_perf_test(item["test"])
                     st.session_state["eval_partial"]["sql_perf_results"].append(r)
                 elif item["type"] == "conv":
-                    _provider = st.session_state.get("eval_selected_provider", "OpenAI")
-                    r = score_conversational_test(item["test"], rubric.get("conversational", DEFAULT_RUBRIC["conversational"]), provider=_provider)
+                    _judge_provider = st.session_state.get("eval_selected_provider", "OpenAI")
+                    _agent_provider = st.session_state.get("eval_selected_agent_provider", "OpenAI")
+                    r = score_conversational_test(item["test"], rubric.get("conversational", DEFAULT_RUBRIC["conversational"]), judge_provider=_judge_provider, agent_provider=_agent_provider)
                     st.session_state["eval_partial"]["conv_results"].append(r)
 
                 _log = st.session_state.setdefault("eval_console_log", [])
